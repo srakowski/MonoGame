@@ -306,6 +306,8 @@ namespace MonoGame.Tools.Pipeline
             if (!ProjectOpen)
                 return;
 
+            View.KillWatcher();
+
             // Make sure we give the user a chance to
             // save the project if they need too.
             if (!AskSaveProject())
@@ -642,36 +644,52 @@ namespace MonoGame.Tools.Pipeline
             return string.Empty;
         }
 
-        public void Include()
+        public void Include(List<string> filesToInclude = null)
         {
             var path = GetFullPath(GetCurrentPath());
 
             List<string> files;
-            if (View.ChooseContentFile(path, out files))
+            if (filesToInclude == null || !filesToInclude.Any())
             {
-                var items = new List<IncludeItem>();
-                var repeat = false;
-                var action = IncludeType.Copy;
-
-                if (!IncludeFiles(items, path, files.ToArray(), ref repeat, ref action))
+                if (!View.ChooseContentFile(path, out files))
+                {
                     return;
-
-                if (items.Count == 0)
-                    return;
-
-                var includeaction = new IncludeAction(items);
-                if (includeaction.Do())
-                    _actionStack.Add(includeaction);
+                }
             }
+            else
+            {
+                files = filesToInclude;
+            }
+
+            var items = new List<IncludeItem>();
+            var repeat = false;
+            var action = IncludeType.Copy;
+
+            if (!IncludeFiles(items, path, files.ToArray(), ref repeat, ref action))
+                return;
+
+            if (items.Count == 0)
+                return;
+
+            var includeaction = new IncludeAction(items);
+            if (includeaction.Do())
+                _actionStack.Add(includeaction);
         }
 
-        public void IncludeFolder()
+        public void IncludeFolder(string folderToInclude = null)
         {
             var path = GetFullPath(GetCurrentPath());
 
             string folder;
-            if (!View.ChooseContentFolder(path, out folder))
-                return;
+            if (string.IsNullOrWhiteSpace(folderToInclude))
+            {
+                if (!View.ChooseContentFolder(path, out folder))
+                    return;
+            }
+            else
+            {
+                folder = folderToInclude;
+            }
 
             var items = new List<IncludeItem>();
             var repeat = false;
@@ -783,17 +801,19 @@ namespace MonoGame.Tools.Pipeline
             return ret;
         }
 
-        public void Exclude(bool delete)
+        public void Exclude(bool delete, List<IProjectItem> items = null)
         {
+            var itemsToExclude = items ?? SelectedItems;
+
             // We don't want to show a delete confirmation for any items outside the project folder
-            var filteredItems = new List<IProjectItem>(SelectedItems.Where(i => !i.OriginalPath.Contains("..")));
+            var filteredItems = itemsToExclude.Where(i => !i.OriginalPath.Contains("..")).ToList();
 
             if (filteredItems.Count > 0 && delete && !View.ShowDeleteDialog(filteredItems))
                 return;
 
             // Still need to pass all items to the Exclude action so it can remove them from the view.
             // Filtering is done internally so it only deletes files in the project folder
-            var action = new ExcludeAction(this, SelectedItems, delete);
+            var action = new ExcludeAction(this, itemsToExclude, delete);
             if(action.Do())
                 _actionStack.Add(action);
 
@@ -840,13 +860,23 @@ namespace MonoGame.Tools.Pipeline
                 _actionStack.Add(action);
         }
 
-        public void Rename()
+        public void Rename(string newName = null, IProjectItem item = null)
         {
             string name;
-            if (SelectedItem == null || !View.ShowEditDialog("Rename Item", "New Name:", Path.GetFileName(SelectedItem.DestinationPath), true, out name))
-                return;
+            IProjectItem itemToChange = item ?? SelectedItem;
+            if (itemToChange == null) return;
 
-            var action = new MoveAction(SelectedItem, name);
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                if (SelectedItem == null || !View.ShowEditDialog("Rename Item", "New Name:", Path.GetFileName(SelectedItem.DestinationPath), true, out name))
+                    return;
+            }
+            else
+            {
+                name = newName;
+            }
+
+            var action = new MoveAction(itemToChange, name);
             if (action.Do())
                 _actionStack.Add(action);
         }

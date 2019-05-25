@@ -72,5 +72,7 @@ namespace MonoGame.Tools.Pipeline
         void UpdateRecentList(List<string> recentList);
 
         void SetClipboard(string text);
+
+        void KillWatcher();
     }
 }

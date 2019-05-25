@@ -93,17 +93,17 @@ namespace MonoGame.Tools.Pipeline
 
         void DragDrop(string initialDirectory, string[] folders, string[] files);
 
-        void Include();
+        void Include(List<string> filesToInclude = null);
 
-        void IncludeFolder();
+        void IncludeFolder(string folderToInclude = null);
 
-        void Exclude(bool delete);
+        void Exclude(bool delete, List<IProjectItem> items = null);
 
         void NewItem();
 
         void NewFolder();
 
-        void Rename();
+        void Rename(string newName = null, IProjectItem item = null);
         
         void AddAction(IProjectAction action);
 

@@ -9,6 +9,7 @@ using System.Diagnostics;
 using Eto.Forms;
 using Eto.Drawing;
 using System.Reflection;
+using MonoGame.Framework.Content.Pipeline.Builder;
 
 namespace MonoGame.Tools.Pipeline
 {
@@ -21,6 +22,7 @@ namespace MonoGame.Tools.Pipeline
         public const string TitleBase = "MonoGame Pipeline Tool";
         public static MainWindow Instance;
 
+        private FileSystemWatcher _watcher;
         private List<Pad> _pads;
         private Clipboard _clipboard;
         private ContextMenu _contextMenu;
@@ -88,7 +90,91 @@ namespace MonoGame.Tools.Pipeline
 
         public void Attach(IController controller)
         {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
             PipelineController.Instance.OnProjectLoaded += () => projectControl.ExpandBase();
+            PipelineController.Instance.OnProjectLoaded += () =>
+            {
+                KillWatcher();
+
+                _watcher = new FileSystemWatcher(PipelineController.Instance.ProjectLocation);
+                _watcher.IncludeSubdirectories = true;
+
+                _watcher.Changed += (e, a) =>
+                {
+                    Debug.WriteLine($"changed: {a.FullPath}");
+                };
+
+                _watcher.Renamed += (e, a) =>
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        dispatcher.Invoke(() =>
+                        {
+                            var wasDirty = PipelineController.Instance.ProjectDirty;
+                            var itemPath = PipelineController.Instance.GetRelativePath(a.OldFullPath).Replace(@"\", "/");
+                            var item = projectControl.FindItem(itemPath) ??
+                                PipelineController.Instance.GetItem(itemPath);
+                            if (item != null)
+                            {
+                                PipelineController.Instance.Exclude(false, new List<IProjectItem>{item});
+                                if (File.Exists(a.FullPath))
+                                {
+                                    PipelineController.Instance.Include(new List<string>{a.FullPath});
+                                }
+                                else if (Directory.Exists(a.FullPath))
+                                {
+                                    PipelineController.Instance.IncludeFolder(a.FullPath);
+                                }
+                            }
+                            if (!wasDirty && PipelineController.Instance.ProjectDirty)
+                                PipelineController.Instance.SaveProject(false);
+                        });
+                    });
+                };
+
+                _watcher.Deleted += (e, a) =>
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        var wasDirty = PipelineController.Instance.ProjectDirty;
+                        var itemPath = PipelineController.Instance.GetRelativePath(a.FullPath).Replace(@"\", "/"); ;
+                        var item = PipelineController.Instance.GetItem(itemPath) ??
+                            projectControl.FindItem(itemPath);
+                        if (item != null)
+                        {
+                            PipelineController.Instance.Exclude(false, new List<IProjectItem>
+                            {
+                                item,
+                            });
+                        }
+                        if (!wasDirty && PipelineController.Instance.ProjectDirty)
+                            PipelineController.Instance.SaveProject(false);
+                    });
+                };
+
+                _watcher.Created += (e, a) =>
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        var wasDirty = PipelineController.Instance.ProjectDirty;
+                        if (File.Exists(a.FullPath))
+                        {
+                            PipelineController.Instance.Include(new List<string>
+                            {
+                                a.FullPath
+                            });
+                        }
+                        else if (Directory.Exists(a.FullPath))
+                        {
+                            PipelineController.Instance.IncludeFolder(a.FullPath);
+                        }
+                        if (!wasDirty && PipelineController.Instance.ProjectDirty)
+                            PipelineController.Instance.SaveProject(false);
+                    });
+                };
+
+                _watcher.EnableRaisingEvents = true;
+            };
 
             cmdDebugMode.Checked = PipelineSettings.Default.DebugMode;
             foreach (var control in _pads)
@@ -684,6 +770,15 @@ namespace MonoGame.Tools.Pipeline
         private void CmdRebuildItem_Executed(object sender, EventArgs e)
         {
             PipelineController.Instance.RebuildItems();
+        }
+
+        public void KillWatcher()
+        {
+            if (_watcher != null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+            }
         }
 
         #endregion

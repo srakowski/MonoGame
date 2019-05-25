@@ -111,6 +111,14 @@ namespace MonoGame.Tools.Pipeline
             // Does nothing right now 
         }
 
+        public IProjectItem FindItem(string path)
+        {
+            TreeGridItem tgi;
+            if (!FindItem(_treeRoot, path, out tgi))
+                return null;
+            return tgi.Tag as IProjectItem;
+        }
+
         private bool FindItem(TreeGridItem root, string path, out TreeGridItem item)
         {
             var split = path.Split('/');
