@@ -212,11 +212,17 @@ namespace MonoGame.Tools.Pipeline
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Select(l => Path.Combine(projectLocation, l))
                 .Select(l => l.EndsWith("/")
-                    ? new Func<string, bool>(str => str.StartsWith(l.Trim('/')))
+                    ? new Func<string, bool>(str => IsInDirectory(str, l.Trim('/')))
                     : new Func<string, bool>(str => str == l)
                 ));
         }
 
+        private static bool IsInDirectory(string path, string directoryPath)
+        {
+            if (path.Length < directoryPath.Length) return false;
+            if (path == directoryPath) return true;
+            return IsInDirectory(Path.GetDirectoryName(path), directoryPath);
+        }
 
         public void Invoke(Action action)
         {
