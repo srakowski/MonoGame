@@ -74,6 +74,11 @@ namespace MonoGame.Tools.Pipeline
             get { return _project.OutputDir; }
         }
 
+        public string ProjectIntermediateDir
+        {
+            get { return _project.IntermediateDir; }
+        }
+
         public List<IProjectItem> SelectedItems { get; private set; }
 
         public IProjectItem SelectedItem { get; private set; }

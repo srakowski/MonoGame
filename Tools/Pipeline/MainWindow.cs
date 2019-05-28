@@ -10,6 +10,7 @@ using Eto.Forms;
 using Eto.Drawing;
 using System.Reflection;
 using MonoGame.Framework.Content.Pipeline.Builder;
+using System.Linq;
 
 namespace MonoGame.Tools.Pipeline
 {
@@ -101,41 +102,44 @@ namespace MonoGame.Tools.Pipeline
 
                 _watcher.Changed += (e, a) =>
                 {
-                    Debug.WriteLine($"changed: {a.FullPath}");
+                    var fileName = Path.GetFileName(a.FullPath);
+                    if (fileName == ".mgcbignore")
+                    {
+                        RefreshIgnored(PipelineController.Instance.ProjectLocation);
+                        return;
+                    }
                 };
 
                 _watcher.Renamed += (e, a) =>
-                {
                     dispatcher.Invoke(() =>
                     {
-                        dispatcher.Invoke(() =>
+                        if (IsIgnored(a.FullPath)) return;
+
+                        var wasDirty = PipelineController.Instance.ProjectDirty;
+                        var itemPath = PipelineController.Instance.GetRelativePath(a.OldFullPath).Replace(@"\", "/");
+                        var item = projectControl.FindItem(itemPath) ??
+                            PipelineController.Instance.GetItem(itemPath);
+                        if (item != null)
                         {
-                            var wasDirty = PipelineController.Instance.ProjectDirty;
-                            var itemPath = PipelineController.Instance.GetRelativePath(a.OldFullPath).Replace(@"\", "/");
-                            var item = projectControl.FindItem(itemPath) ??
-                                PipelineController.Instance.GetItem(itemPath);
-                            if (item != null)
+                            PipelineController.Instance.Exclude(false, new List<IProjectItem>{item});
+                            if (File.Exists(a.FullPath))
                             {
-                                PipelineController.Instance.Exclude(false, new List<IProjectItem>{item});
-                                if (File.Exists(a.FullPath))
-                                {
-                                    PipelineController.Instance.Include(new List<string>{a.FullPath});
-                                }
-                                else if (Directory.Exists(a.FullPath))
-                                {
-                                    PipelineController.Instance.IncludeFolder(a.FullPath);
-                                }
+                                PipelineController.Instance.Include(new List<string>{a.FullPath});
                             }
-                            if (!wasDirty && PipelineController.Instance.ProjectDirty)
-                                PipelineController.Instance.SaveProject(false);
-                        });
+                            else if (Directory.Exists(a.FullPath))
+                            {
+                                PipelineController.Instance.IncludeFolder(a.FullPath);
+                            }
+                        }
+                        if (!wasDirty && PipelineController.Instance.ProjectDirty)
+                            PipelineController.Instance.SaveProject(false);
                     });
-                };
 
                 _watcher.Deleted += (e, a) =>
-                {
                     dispatcher.Invoke(() =>
                     {
+                        if (IsIgnored(a.FullPath)) return;
+
                         var wasDirty = PipelineController.Instance.ProjectDirty;
                         var itemPath = PipelineController.Instance.GetRelativePath(a.FullPath).Replace(@"\", "/"); ;
                         var item = PipelineController.Instance.GetItem(itemPath) ??
@@ -150,12 +154,12 @@ namespace MonoGame.Tools.Pipeline
                         if (!wasDirty && PipelineController.Instance.ProjectDirty)
                             PipelineController.Instance.SaveProject(false);
                     });
-                };
 
                 _watcher.Created += (e, a) =>
-                {
                     dispatcher.Invoke(() =>
                     {
+                        if (IsIgnored(a.FullPath)) return;
+
                         var wasDirty = PipelineController.Instance.ProjectDirty;
                         if (File.Exists(a.FullPath))
                         {
@@ -171,8 +175,8 @@ namespace MonoGame.Tools.Pipeline
                         if (!wasDirty && PipelineController.Instance.ProjectDirty)
                             PipelineController.Instance.SaveProject(false);
                     });
-                };
 
+                RefreshIgnored(PipelineController.Instance.ProjectLocation);
                 _watcher.EnableRaisingEvents = true;
             };
 
@@ -182,6 +186,37 @@ namespace MonoGame.Tools.Pipeline
 
             Style = "MainWindow";
         }
+
+        private bool IsIgnored(string fullPath)
+        {
+            var fileName = Path.GetFileName(fullPath);
+            if (fileName == ".mgcbignore")
+            {
+                RefreshIgnored(PipelineController.Instance.ProjectLocation);
+                return true;
+            }
+            if (ignored.Any(i => i.Invoke(fullPath))) return true;
+            return false;
+        }
+
+        private static List<Func<string, bool>> ignored = new List<Func<string, bool>>();
+
+        private static void RefreshIgnored(string projectLocation)
+        {
+            var path = Path.Combine(PipelineController.Instance.ProjectLocation, ".mgcbignore");
+            ignored.Clear();
+            if (!File.Exists(path)) return;
+            ignored.AddRange(File
+                .ReadAllLines(path)
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .Select(l => Path.Combine(projectLocation, l))
+                .Select(l => l.EndsWith("/")
+                    ? new Func<string, bool>(str => str.StartsWith(l.Trim('/')))
+                    : new Func<string, bool>(str => str == l)
+                ));
+        }
+
 
         public void Invoke(Action action)
         {
